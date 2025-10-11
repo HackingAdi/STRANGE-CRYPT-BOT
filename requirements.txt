@@ -1,0 +1,20 @@
+# Telegram Bot (python-telegram-bot v20+ for asyncio)
+python-telegram-bot>=20.0
+
+# Telethon for user account client
+telethon>=1.28.0
+
+# Pyrogram (bot mode copy_message etc.)
+pyrogram>=2.0
+
+# Optional: faster crypto backend for Pyrogram
+tgcrypto>=1.6.6
+
+# dotenv if you want to load env vars from .env
+python-dotenv>=1.0.0
+
+# helpful async http utilities (if needed)
+aiohttp>=3.8.0
+
+# typing / misc utilities (safe minimums)
+typing_extensions>=4.0.0
