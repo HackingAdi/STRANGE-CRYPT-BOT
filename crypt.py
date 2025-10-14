@@ -15,7 +15,7 @@ from telethon import TelegramClient, events
 from pyrogram import Client
 
 # ==================== CONFIGURATION - REPLACE ALL VALUES ====================
-BOT_TOKEN = "8435505763:AAEpRldG6-M1Pato92U82Aowbm0W8cBdzBc"                    # Replace with Bot A token
+BOT_TOKEN = "8269309149:AAH1VSqWqwd4MUDnG89DdqMFx4DlEx8uYwY"                    # Replace with Bot A token
 API_ID = 28299715                                 # Replace with your API ID
 API_HASH = "e07f249a5aa74207cf73102f9d146ce6"                   # Replace with your API hash
 ADMIN_ID = 6877188764                              # Replace with admin user ID
@@ -28,6 +28,10 @@ ENCRYPTION_BOT = "@android_protect_bot"           # Replace with Bot B username
 # Bot Settings
 BATCH_DELAY_SECONDS = 2                           # Delay before processing batch
 PROCESSING_DELAY = 5                              # Simulated processing time
+
+# Initialize batch tracker
+current_processing_batch = None
+
 
 # ==================== END CONFIGURATION ====================
 
@@ -63,6 +67,23 @@ ASCII_ART = f"""
 if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
+
+
+
+# ====== RESET QUEUE HELPER ======
+def reset_processing_state():
+    """Clear any leftover batch and reset current processing state."""
+    global current_processing_batch
+    current_processing_batch = None
+    try:
+        data = {}
+        with open("active_batches.json", "w") as f:
+            json.dump(data, f)
+        print("🧹 Queue reset successfully.")
+    except Exception as e:
+        print("❌ Failed to reset queue:", e)
+# ================================
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -569,7 +590,12 @@ async def setup_pyrogram_client():
         return None
 
 async def setup_telethon_handlers():
-    global user_client, bot_instance
+    """
+    NOTE: changed to register handlers using user_client.add_event_handler(...) instead of
+    decorator @user_client.on(...). This avoids the AttributeError when `user_client`
+    is None or not available at decoration time.
+    """
+    global user_client, bot_instance, current_processing_batch
     
     try:
         incoming_entity = await user_client.get_entity(INCOMING_CHANNEL)
@@ -579,91 +605,308 @@ async def setup_telethon_handlers():
     except Exception as e:
         logger.error(f"Error getting channel entities: {e}")
         return
-    
-    @user_client.on(events.NewMessage(chats=incoming_entity))
+
+    # Helper: error keywords to detect Protect Bot errors (case-insensitive)
+    ERROR_KEYWORDS = [
+        "already encrypted",
+        "could not be processed",
+        "error",
+        "failed",
+        "invalid",
+        "not allowed",
+        "cannot",
+        "couldn't",
+        "can't",
+        "already protected"
+    ]
+
+
     async def handle_incoming_channel(event):
+        """Minimal test: prove Telethon can forward an APK."""
         try:
+            # Only process if message has a document
             if not event.media:
+                print("No media in message.")
                 return
-            
-            ref_id = extract_reference_id_from_caption(event.message.message)
-            if not ref_id:
+            doc = getattr(event.message, "document", None)
+            if not doc:
+                print("No document attribute.")
                 return
-            
-            global current_processing_batch
-            
-            if current_processing_batch != ref_id:
-                caption = event.message.message or ""
-                file_match = re.search(r'File: (\d+)/(\d+)', caption)
-                if file_match:
-                    current_file = int(file_match.group(1))
-                    total_files = int(file_match.group(2))
-                    store_queue_file(ref_id, event.message.id, current_file, total_files)
-                return
-            
-            print(f"{color.BLUE}📤 FORWARDING file to Bot B: REF {ref_id}{color.RESET}")
-            await user_client.send_file(encryption_entity, event.media)
-            
+
+            caption = "Test forward to Protect Bot"
+            print("📦 Trying to send to Protect Bot...")
+
+            try:
+                result = await user_client.send_file(ENCRYPTION_BOT, doc, caption=caption)
+                print("✅ Sent successfully:", result)
+            except Exception as e:
+                import traceback
+                print("❌ send_file failed:", e)
+                traceback.print_exc()
+
         except Exception as e:
-            logger.error(f"ACCOUNT incoming error: {e}")
-    
-    @user_client.on(events.NewMessage(chats=encryption_entity))
+            import traceback
+            print("❌ handle_incoming_channel error:", e)
+            traceback.print_exc()
+
+       
+   
+   
+   
+   
+   
+   
+   
+   # ============================================================
+# 🧩 Handle messages from Outgoing Channel → stop feedback loop
+# ============================================================
+    async def handle_outgoing_channel(event):
+
+        """
+        Prevent the Outgoing Channel from forwarding text or error messages
+        back to the Protect Bot.  Only forward APK files.
+        """
+        try:
+            # Ignore any message that has no media (text-only)
+            if not event.media:
+                print("🚫 Outgoing text ignored – not forwarding to Protect Bot.")
+                return
+
+        # Only allow APK documents
+            doc = getattr(event.message, "document", None)
+            if not doc or not getattr(doc, "mime_type", "").startswith("application/vnd.android.package-archive"):
+                print("🚫 Outgoing non-APK media ignored.")
+                return
+
+            # Forward valid APKs (if you really need this direction)
+            await user_client.send_file(encryption_entity, doc, caption=event.message.message or "")
+            print("📤 Outgoing APK forwarded to Protect Bot.")
+
+        except Exception as e:
+            logger.error(f"handle_outgoing_channel error: {e}")
+
+   
+   
     async def handle_encryption_bot(event):
         try:
-            if not event.media:
-                return
-            
-            print(f"{color.CYAN}📦 RECEIVED file from Bot B → forwarding to outgoing{color.RESET}")
-            
-            global current_processing_batch
-            if not current_processing_batch:
-                return
-            
-            ref_id = current_processing_batch
-            
-            active_batches = load_active_batches()
-            batch_info = active_batches.get(ref_id, {})
-            
-            if batch_info:
-                files_received = batch_info.get('files_received', 0) + 1
-                total_files = batch_info.get('total_files', 1)
-                user_id = batch_info.get('user_id')
-                submission_id = batch_info.get('submission_id', 'Unknown')
+            """
+            This handler now handles both:
+             - media (signed APK) forwarded from Protect Bot -> forward to outgoing channel, and add message link
+             - text error messages from Protect Bot -> forward the exact text to OUTGOING_CHANNEL and to the user
+            """
+            global current_processing_batch, bot_instance
+
+            # Normalize message text if present
+            text = None
+            if event.message and getattr(event.message, 'message', None):
+                text = str(event.message.message).strip()
+
+            # If the Protect Bot sent a text error message (no media)
+            if not event.media and text:
+                # detect error by searching for error keywords (case-insensitive)
+                t_lower = text.lower()
+                is_error = any(kw in t_lower for kw in ERROR_KEYWORDS)
                 
-                batch_info['files_received'] = files_received
-                active_batches[ref_id] = batch_info
-                save_active_batches(active_batches)
+                # If it looks like an error - forward the exact text to outgoing channel and to the original user
+                if is_error:
+                    print(f"{color.RED}🚨 Protect Bot error detected: {text}{color.RESET}")
+                    
+                    # Forward to outgoing channel as a text message
+                    try:
+                        await user_client.send_message(outgoing_entity, text)
+                        print(f"{color.YELLOW}📤 Forwarded Protect Bot error to OUTGOING channel{color.RESET}")
+                    except Exception as e:
+                        logger.error(f"Error forwarding Protect Bot error to outgoing channel: {e}")
+                    
+                    # Also send the exact text to the original user (if we can resolve the current batch)
+                    try:
+                        ref_id = current_processing_batch
+                        if ref_id:
+                            active_batches = load_active_batches()
+                            batch_info = active_batches.get(ref_id, {})
+                            user_id = batch_info.get('user_id')
+                            submission_id = batch_info.get('submission_id', 'Unknown')
+                            if user_id:
+                                # send as normal bot message (use Bot A)
+                                if bot_instance:
+                                    try:
+                                        await bot_instance.send_message(user_id, text)
+                                        
+
+
+
+
+
+                                        
+                                        print(f"{color.YELLOW}📤 Forwarded Protect Bot error to user {user_id}{color.RESET}")
+                                    except Exception as e:
+                                        logger.error(f"Error sending error message to user {user_id}: {e}")
+                                else:
+                                    print(f"{color.GRAY}Bot instance not available to send direct user message{color.RESET}")
+                        else:
+                            print(f"{color.GRAY}No current_processing_batch to map error to user{color.RESET}")
+                    except Exception as e:
+                        logger.error(f"Error mapping Protect Bot error to user: {e}")
+
+                    # ✅ CLEANUP after error text
+                    # ✅ Reset after successful encryption
+                  
+
+
+                    
+                    # Nothing else to do for text-only error
+                    return
+
+            # If message contains media (e.g., a signed APK) - process as before
+            if event.media:
+                print(f"{color.CYAN}📦 RECEIVED file from Bot B → forwarding to outgoing{color.RESET}")
                 
-                print(f"{color.YELLOW}📊 REF {ref_id} (Submission {submission_id}) - File {files_received}/{total_files}{color.RESET}")
+                if not current_processing_batch:
+                    # We cannot map to a ref id - still forward the media to outgoing channel
+                    try:
+                        await user_client.send_file(outgoing_entity, event.media)
+                            # ✅ CLEANUP: remove finished batch so next user starts at position 1 again
+                        if ref_id in active_batches:
+                            del active_batches[ref_id]
+                            save_active_batches(active_batches)
+                            print(f"{color.YELLOW}🧹 Cleaned up finished batch {ref_id}{color.RESET}")
+
+                    except Exception as e:
+                        logger.error(f"Error forwarding media to outgoing when no current batch: {e}")
+                    return
                 
-                caption = f"⚡ File {files_received}/{total_files} - Submission ID: {submission_id}"
-            else:
-                files_received = 1
-                total_files = 1
-                user_id = None
-                submission_id = 'Unknown'
-                caption = f"⚡ File 1/1 - Submission ID: {submission_id}"
-            
-            print(f"{color.MAGENTA}📤 FORWARDING to outgoing channel: REF {ref_id}{color.RESET}")
-            sent_message = await user_client.send_file(
-                outgoing_entity, 
-                event.media, 
-                caption=caption
-            )
-            
-            if user_id and ref_id in bot_a_reference_ids:
-                add_message_link_for_forwarding(
-                    ref_id=ref_id,
-                    chat_username="private_channel",
-                    message_id=sent_message.id,
-                    user_id=user_id,
-                    total_files=total_files,
-                    current_file=files_received
+                ref_id = current_processing_batch
+                
+                active_batches = load_active_batches()
+                batch_info = active_batches.get(ref_id, {})
+                
+                if batch_info:
+                    files_received = batch_info.get('files_received', 0) + 1
+                    total_files = batch_info.get('total_files', 1)
+                    user_id = batch_info.get('user_id')
+                    submission_id = batch_info.get('submission_id', 'Unknown')
+                    
+                    batch_info['files_received'] = files_received
+                    active_batches[ref_id] = batch_info
+                    save_active_batches(active_batches)
+                    
+                    print(f"{color.YELLOW}📊 REF {ref_id} (Submission {submission_id}) - File {files_received}/{total_files}{color.RESET}")
+                    
+                    caption = f"⚡ File {files_received}/{total_files} - Submission ID: {submission_id}"
+                else:
+                    files_received = 1
+                    total_files = 1
+                    user_id = None
+                    submission_id = 'Unknown'
+                    caption = f"⚡ File 1/1 - Submission ID: {submission_id}"
+                
+                print(f"{color.MAGENTA}📤 FORWARDING to outgoing channel: REF {ref_id}{color.RESET}")
+                sent_message = await user_client.send_file(
+                    outgoing_entity, 
+                    event.media, 
+                    caption=caption
                 )
-            
+                
+                # If we know the user and this ref is one of Bot A refs, add link for final forwarding
+                if user_id and ref_id in bot_a_reference_ids:
+                    add_message_link_for_forwarding(
+                        ref_id=ref_id,
+                        chat_username="private_channel",
+                        message_id=sent_message.id,
+                        user_id=user_id,
+                        total_files=total_files,
+                        current_file=files_received
+                    )
+                        # ✅ CLEANUP: remove finished batch so next user starts at position 0
+                    if ref_id in active_batches:
+                        del active_batches[ref_id]
+                        save_active_batches(active_batches)
+                        print(f"{color.YELLOW}🧹 Cleaned up finished batch {ref_id}{color.RESET}")
+
+                
         except Exception as e:
             logger.error(f"ACCOUNT encryption error: {e}")
 
+    # Register handlers using add_event_handler to avoid decoration-time problems
+    print("Sending error to user...")
+    print("Resetting queue now")
+    reset_processing_state()
+    print("Resetting done!")
+
+        # --- Resolve chat entities once ---
+    incoming_entity = await user_client.get_entity(INCOMING_CHANNEL)
+    outgoing_entity = await user_client.get_entity(OUTGOING_CHANNEL)
+    encryption_entity = await user_client.get_entity(ENCRYPTION_BOT)
+
+    try:
+        user_client.add_event_handler(handle_incoming_channel, events.NewMessage(chats=incoming_entity))
+        user_client.add_event_handler(handle_encryption_bot, events.NewMessage(chats=encryption_entity))
+
+        # 🆕 Detect Protect Bot messages that are edited (error re-edits)
+        async def handle_encryption_bot_edit(event):
+            try:
+                if not event or not event.message:
+                    return
+
+                text = str(event.message.message or "").strip()
+                if not text:
+                    return
+
+                # Same error keyword list as before
+                ERROR_KEYWORDS = [
+                    "error",
+                    "could not be processed",
+                    "already encrypted",
+                    "can't process",
+                    "disable obfuscation",
+                    "invalid",
+                    "failed"
+                ]
+                if any(kw in text.lower() for kw in ERROR_KEYWORDS):
+                    print(f"{color.RED}⚠️ Protect Bot EDIT error detected: {text}{color.RESET}")
+
+                    # Forward edited error message to outgoing channel
+                    await user_client.send_message(OUTGOING_CHANNEL, text)
+                            # ✅ Reset after error
+                   
+
+
+                    # Also forward to user (if batch active)
+                    ref_id = current_processing_batch
+                    if ref_id:
+                        active_batches = load_active_batches()
+                        batch_info = active_batches.get(ref_id, {})
+                        user_id = batch_info.get("user_id")
+                        if user_id and bot_instance:
+                            await bot_instance.send_message(user_id, text)
+                            print(f"{color.YELLOW}📤 Forwarded edited error to user {user_id}{color.RESET}")
+                    # ✅ CLEANUP after error
+                    # active_batches = load_active_batches()
+                    # if ref_id in active_batches:
+                    #     del active_batches[ref_id]
+                    #     save_active_batches(active_batches)
+                    #     print(f"{color.YELLOW}🧹 Cleaned up errored batch {ref_id}{color.RESET}")
+                    # ✅ Reset after error
+               
+
+
+
+            except Exception as e:
+                logger.error(f"Error in handle_encryption_bot_edit: {e}")
+          
+
+        # Register event handler for edits from Protect Bot
+        user_client.add_event_handler(handle_encryption_bot_edit, events.MessageEdited(chats=encryption_entity))
+        user_client.add_event_handler(handle_outgoing_channel, events.NewMessage(chats=outgoing_entity))
+        reset_processing_state()
+
+        print(f"{color.MATRIX_GREEN}✅ Telethon handlers registered via add_event_handler{color.RESET}")
+    except Exception as e:
+        logger.error(f"Error registering telethon handlers: {e}")
+
+
+
+    
 async def setup_bot_a_message_link_forwarding():
     global bot_instance, message_links_for_forwarding, pyrogram_client
     
