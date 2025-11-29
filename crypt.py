@@ -963,11 +963,11 @@ async def setup_bot_a_message_link_forwarding():
                     except Exception as e:
                         logger.error(f"BOT A: Error forwarding file {i+1}: {e}")
                 
-                print(f"{color.MATRIX_GREEN}🎉 APK CONVERSION COMPLETE for Submission {submission_id}!{color.RESET}")
+                print(f"{color.MATRIX_GREEN}🎉 APK Crypt COMPLETE for Submission {submission_id}!{color.RESET}")
                 
                 try:
                     completion_message = (
-                        f"🎊 <b>APK Conversion Complete!</b> 🎊\n\n"
+                        f"🎊 <b>APK Crypt Complete!</b> 🎊\n\n"
                         f"<b>Submission ID:</b> {submission_id}\n"
                         f"<b>Total Files:</b> {total_files}\n"
                         f"<b>Completed:</b> {datetime.now().strftime('%H:%M:%S')}\n\n"
@@ -1033,21 +1033,21 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(
                     f"🎉 <b>Welcome back!</b> 🎉\n\n"
                     f"⏰ <b>{days_left} days remaining</b>\n"
-                    f"📱 <b>Send APK files for conversion</b>\n\n"
+                    f"📱 <b>Send APK files for Crypt</b>\n\n"
                     f"🔥 <b>Send your APK files for processing!</b> 🔥",
                     parse_mode=ParseMode.HTML
                 )
             else:
                 keyboard = [
                     [InlineKeyboardButton("🔑 Request Approval", callback_data="request_approval")],
-                    [InlineKeyboardButton("💬 Contact Support", url="https://t.me/STRANGE_MALWARE4")]
+                    [InlineKeyboardButton("💬 Contact Support", url="https://t.me/Let_mee_knew")]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
                 await update.message.reply_text(
-                    "🔐 <b>APK Conversion Bot</b> 🔐\n\n"
+                    "🔐 <b>APK Crypt Bot</b> 🔐\n\n"
                     "🛡️ <b>Convert your APK files securely</b>\n\n"
-                    "📱 Send APK files for conversion\n"
+                    "📱 Send APK files for Crypt\n"
                     "🔒 Your privacy is our priority\n"
                     "⚡ Fast and reliable service\n\n"
                     "🔥 <b>Request approval to get started!</b> 🔥",
@@ -1372,7 +1372,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
                         pending_user_id,
                         f"🎉 <b>Congratulations!</b>\n\n"
                         f"Your subscription has been approved for {days} days!\n\n"
-                        f"🔥 <b>Send APK files for conversion!</b>\n"
+                        f"🔥 <b>Send APK files for Crypt!</b>\n"
                         f"Type /start to begin.",
                         parse_mode=ParseMode.HTML
                     )
@@ -1429,7 +1429,7 @@ async def handle_media_messages(update: Update, context: ContextTypes.DEFAULT_TY
             return
         
         if not is_apk_file(update.message):
-            await update.message.reply_text("⚠️ <b>We only support APK files for conversion.</b>")
+            await update.message.reply_text("⚠️ <b>We only support APK files for Crypt.</b>")
             return
         
         print(f"{color.CYAN}📱 RECEIVED APK from user {username} ({user_id}){color.RESET}")
@@ -1554,7 +1554,7 @@ def main():
     try:
         clear_screen()
         
-        print(f"{color.MATRIX_GREEN}🚀 APK Conversion Bot A Started!{color.RESET}")
+        print(f"{color.MATRIX_GREEN}🚀 APK Crypt Bot A Started!{color.RESET}")
         print(f"{color.CYAN}🤖 Bot Token: {BOT_TOKEN[:20]}...{color.RESET}")
         print(f"{color.YELLOW}🔥 Starting Telethon + Pyrogram hybrid...{color.RESET}")
         
@@ -1580,7 +1580,7 @@ def main():
             
             asyncio.create_task(setup_bot_a_message_link_forwarding())
             
-            print(f"\n{color.MATRIX_GREEN}🎉 APK Conversion System Active... Press Ctrl+C to stop{color.RESET}")
+            print(f"\n{color.MATRIX_GREEN}🎉 APK Crypt System Active... Press Ctrl+C to stop{color.RESET}")
             print(f"{color.CYAN}🔧 Telethon: Main operations{color.RESET}")
             if pyrogram_client:
                 print(f"{color.PURPLE}🤖 Pyrogram: Bot A forwarding (no forward tags){color.RESET}\n")
